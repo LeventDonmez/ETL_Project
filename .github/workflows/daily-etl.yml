@@ -1,0 +1,69 @@
+name: Daily ETL
+
+on:
+  schedule:
+    # 09:00 Europe/Istanbul = 06:00 UTC (Turkiye UTC+3, DST yok)
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      report_date:
+        description: "Rapor tarihi DD_MM_YYYY (bos birakilirsa bugun)"
+        required: false
+        type: string
+
+concurrency:
+  group: daily-etl
+  cancel-in-progress: false
+
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Europe/Istanbul
+      ETL_HEADLESS: "1"
+      ETL_SECRETS_DIR: secrets
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Drive OAuth secrets
+        env:
+          CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
+          CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          secrets_dir = Path(os.environ["ETL_SECRETS_DIR"])
+          secrets_dir.mkdir(parents=True, exist_ok=True)
+
+          client = os.environ.get("CLIENT_SECRETS_JSON", "").strip()
+          creds = os.environ.get("CREDENTIALS_JSON", "").strip()
+          if not client or not creds:
+              raise SystemExit(
+                  "CLIENT_SECRETS_JSON ve CREDENTIALS_JSON GitHub Secrets olarak tanimli olmali."
+              )
+
+          (secrets_dir / "client_secrets.json").write_text(client, encoding="utf-8")
+          (secrets_dir / "credentials.json").write_text(creds, encoding="utf-8")
+          print("OAuth dosyalari secrets/ altina yazildi.")
+          PY
+
+      - name: Run ETL
+        run: |
+          if [ -n "${{ github.event.inputs.report_date }}" ]; then
+            python src/main.py --date "${{ github.event.inputs.report_date }}"
+          else
+            python src/main.py
+          fi

@@ -1,0 +1,13 @@
+.venv/
+.idea/
+secrets/
+local_oauth/
+.gitignore/
+input/
+output/
+*.iml
+__pycache__/
+*.pyc
+credentials.json
+client_secrets.json
+client_secret_*.json
